@@ -1,0 +1,929 @@
+<!DOCTYPE html>
+<html lang="tr" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SMOB Taktik Harp: Zarsız Strateji Oyunu</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        p1: '#ef4444', // Red
+                        p2: '#3b82f6', // Blue
+                        darkbg: '#0f172a',
+                        panelbg: '#1e293b'
+                    }
+                }
+            }
+        }
+    </script>
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Custom Styles for Tactical UI -->
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600;800&family=Inter:wght@300;400;600;700&display=swap');
+        
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #090d16;
+            color: #f8fafc;
+            user-select: none;
+        }
+
+        .font-orbitron {
+            font-family: 'Orbitron', sans-serif;
+        }
+
+        /* Board grid rendering */
+        .board-grid {
+            display: grid;
+            grid-template-columns: repeat(8, minmax(0, 1fr));
+            grid-template-rows: repeat(8, minmax(0, 1fr));
+            gap: 2px;
+            background-color: #334155;
+            border: 2px solid #475569;
+            box-shadow: 0 0 25px rgba(0,0,0,0.7);
+        }
+
+        .tile {
+            position: relative;
+            aspect-ratio: 1;
+            transition: all 0.15s ease-in-out;
+            cursor: pointer;
+        }
+
+        .tile:hover {
+            filter: brightness(1.2);
+            z-index: 10;
+        }
+
+        /* Terrain Specific Styles */
+        .terrain-plain { background-color: #1e293b; }
+        .terrain-mountain { background-color: #334155; border: 1px dashed #64748b; }
+        .terrain-water { background-color: #0f4c81; }
+        .terrain-resource { background-color: #065f46; }
+        .terrain-fortress { background-color: #701a75; }
+
+        /* Highlights */
+        .tile-selected {
+            outline: 3px solid #f59e0b !important;
+            outline-offset: -3px;
+            z-index: 20;
+        }
+
+        .tile-reachable {
+            box-shadow: inset 0 0 0 3px #10b981;
+        }
+
+        .tile-attackable {
+            box-shadow: inset 0 0 0 3px #ef4444;
+            animation: pulse-red 1.5s infinite;
+        }
+
+        @keyframes pulse-red {
+            0%, 100% { box-shadow: inset 0 0 0 3px #ef4444; }
+            50% { box-shadow: inset 0 0 0 5px #b91c1c; }
+        }
+
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar {
+            width: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #0f172a;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #334155;
+            border-radius: 3px;
+        }
+    </style>
+</head>
+<body class="h-screen w-screen overflow-hidden flex flex-col">
+
+    <!-- Top Command Header -->
+    <header class="bg-slate-900 border-b border-slate-800 px-6 py-3 flex justify-between items-center z-30 shadow-lg">
+        <div class="flex items-center space-x-3">
+            <i class="fa-solid fa-shield-halved text-amber-500 text-2xl"></i>
+            <div>
+                <h1 class="font-orbitron font-bold text-lg tracking-wider text-slate-100">WARLAPSE : TAKTİK HARP</h1>
+                <p class="text-xs text-slate-400">Zarsız, %100 Mantık ve Strateji Simülasyonu</p>
+            </div>
+        </div>
+
+        <!-- Global Status & Controls -->
+        <div class="flex items-center space-x-6">
+            <div class="flex items-center space-x-2 bg-slate-800 px-3 py-1.5 rounded-lg border border-slate-700">
+                <span class="text-xs text-slate-400">Mod:</span>
+                <select id="gameModeSelect" class="bg-transparent text-sm font-semibold text-amber-400 outline-none cursor-pointer">
+                    <option value="pvp" class="bg-slate-900 text-slate-200">2 Oyuncu (Yerel PvP)</option>
+                    <option value="ai" class="bg-slate-900 text-slate-200" selected>VS Yapay Zeka (Solo Bot)</option>
+                </select>
+            </div>
+
+            <button id="resetGameBtn" class="bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs px-3 py-1.5 rounded border border-slate-700 transition">
+                <i class="fa-solid fa-rotate-right mr-1"></i> Yeniden Başlat
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Game Area -->
+    <div class="flex-1 flex flex-col md:flex-row overflow-hidden relative">
+
+        <!-- Left Sidebar: Player Controls & Status -->
+        <aside class="w-full md:w-80 bg-slate-900/90 border-r border-slate-800 p-4 flex flex-col justify-between z-20 space-y-4">
+            
+            <!-- Turn Indicator & Player Statistics -->
+            <div class="space-y-3">
+                <div id="turnBanner" class="p-3 rounded-lg border flex items-center justify-between transition-all bg-red-950/40 border-red-500/50 text-red-400">
+                    <div>
+                        <span class="text-xs font-semibold uppercase tracking-widest block">Sıradaki Oyuncu</span>
+                        <span id="turnPlayerName" class="font-orbitron font-bold text-lg">OYUNCU 1 (KIRMIZI)</span>
+                    </div>
+                    <div id="turnBadge" class="w-4 h-4 rounded-full bg-red-500 animate-pulse"></div>
+                </div>
+
+                <!-- Gold & Income Stats -->
+                <div class="grid grid-cols-2 gap-2">
+                    <div class="bg-slate-800/80 p-3 rounded-lg border border-slate-700/60">
+                        <span class="text-xs text-slate-400 block"><i class="fa-solid fa-coins text-amber-400 mr-1"></i> Altın</span>
+                        <span id="playerGoldText" class="font-orbitron font-bold text-xl text-amber-400">100 G</span>
+                    </div>
+                    <div class="bg-slate-800/80 p-3 rounded-lg border border-slate-700/60">
+                        <span class="text-xs text-slate-400 block"><i class="fa-solid fa-arrow-trend-up text-emerald-400 mr-1"></i> Tur Geliri</span>
+                        <span id="playerIncomeText" class="font-orbitron font-bold text-xl text-emerald-400">+100 G</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Recruitment Panel -->
+            <div class="bg-slate-800/50 p-3 rounded-lg border border-slate-700/50 flex-1 flex flex-col">
+                <h3 class="font-orbitron text-xs font-semibold uppercase tracking-wider text-slate-300 mb-2 flex justify-between items-center">
+                    <span>Ordu Çağır (Kışla / Başkent)</span>
+                    <i class="fa-solid fa-person-military-rifle text-slate-400"></i>
+                </h3>
+                <p class="text-[11px] text-slate-400 mb-2">Birlik basmak için Başkente veya ele geçirdiğin Kışlaya (`■`) tıkla.</p>
+                
+                <div class="space-y-2 flex-1 overflow-y-auto pr-1">
+                    <!-- Unit Card: Piyade -->
+                    <div class="unit-recruit-card p-2 bg-slate-800 hover:bg-slate-700/70 border border-slate-700 rounded flex justify-between items-center transition cursor-pointer" onclick="game.selectUnitToRecruit('infantry')">
+                        <div class="flex items-center space-x-2">
+                            <div class="w-8 h-8 rounded bg-slate-700 flex items-center justify-center text-amber-400 font-bold">
+                                <i class="fa-solid fa-shield"></i>
+                            </div>
+                            <div>
+                                <div class="text-xs font-bold text-slate-200">Piyade</div>
+                                <div class="text-[10px] text-slate-400">Güç: 2 | Menzil: 1</div>
+                            </div>
+                        </div>
+                        <span class="text-xs font-orbitron font-bold text-amber-400 bg-amber-950/60 px-2 py-1 rounded border border-amber-500/30">20 G</span>
+                    </div>
+
+                    <!-- Unit Card: Okçu -->
+                    <div class="unit-recruit-card p-2 bg-slate-800 hover:bg-slate-700/70 border border-slate-700 rounded flex justify-between items-center transition cursor-pointer" onclick="game.selectUnitToRecruit('archer')">
+                        <div class="flex items-center space-x-2">
+                            <div class="w-8 h-8 rounded bg-slate-700 flex items-center justify-center text-emerald-400 font-bold">
+                                <i class="fa-solid fa-crosshair"></i>
+                            </div>
+                            <div>
+                                <div class="text-xs font-bold text-slate-200">Okçu</div>
+                                <div class="text-[10px] text-slate-400">Güç: 2 | Menzil: 2</div>
+                            </div>
+                        </div>
+                        <span class="text-xs font-orbitron font-bold text-amber-400 bg-amber-950/60 px-2 py-1 rounded border border-amber-500/30">30 G</span>
+                    </div>
+
+                    <!-- Unit Card: Mızraklı -->
+                    <div class="unit-recruit-card p-2 bg-slate-800 hover:bg-slate-700/70 border border-slate-700 rounded flex justify-between items-center transition cursor-pointer" onclick="game.selectUnitToRecruit('spearman')">
+                        <div class="flex items-center space-x-2">
+                            <div class="w-8 h-8 rounded bg-slate-700 flex items-center justify-center text-cyan-400 font-bold">
+                                <i class="fa-solid fa-mace"></i>
+                            </div>
+                            <div>
+                                <div class="text-xs font-bold text-slate-200">Mızraklı</div>
+                                <div class="text-[10px] text-slate-400">Güç: 3 | Süvari Savarı</div>
+                            </div>
+                        </div>
+                        <span class="text-xs font-orbitron font-bold text-amber-400 bg-amber-950/60 px-2 py-1 rounded border border-amber-500/30">25 G</span>
+                    </div>
+
+                    <!-- Unit Card: Süvari -->
+                    <div class="unit-recruit-card p-2 bg-slate-800 hover:bg-slate-700/70 border border-slate-700 rounded flex justify-between items-center transition cursor-pointer" onclick="game.selectUnitToRecruit('cavalry')">
+                        <div class="flex items-center space-x-2">
+                            <div class="w-8 h-8 rounded bg-slate-700 flex items-center justify-center text-purple-400 font-bold">
+                                <i class="fa-solid fa-chess-knight"></i>
+                            </div>
+                            <div>
+                                <div class="text-xs font-bold text-slate-200">Süvari</div>
+                                <div class="text-[10px] text-slate-400">Güç: 4 | Hızlı İlerleme</div>
+                            </div>
+                        </div>
+                        <span class="text-xs font-orbitron font-bold text-amber-400 bg-amber-950/60 px-2 py-1 rounded border border-amber-500/30">40 G</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- End Turn Button -->
+            <button id="endTurnBtn" onclick="game.endTurn()" class="w-full py-3 bg-gradient-to-r from-amber-600 to-amber-500 hover:from-amber-500 hover:to-amber-400 font-orbitron font-bold text-slate-950 rounded-lg shadow-lg tracking-wider transition transform active:scale-95 flex items-center justify-center space-x-2">
+                <span>TURU BİTİR</span>
+                <i class="fa-solid fa-forward"></i>
+            </button>
+        </aside>
+
+        <!-- Center: Interactive Board -->
+        <main class="flex-1 bg-slate-950 p-4 md:p-6 flex flex-col items-center justify-center relative overflow-auto">
+            
+            <!-- Strategic Board Container -->
+            <div id="boardContainer" class="w-full max-w-[620px] aspect-square relative">
+                <div id="board" class="board-grid w-full h-full rounded-lg overflow-hidden">
+                    <!-- 64 Tiles injected via JS -->
+                </div>
+            </div>
+
+            <!-- Map Legend (Lejant) -->
+            <div class="mt-4 flex flex-wrap justify-center gap-4 text-xs text-slate-400 bg-slate-900/80 px-4 py-2 rounded-lg border border-slate-800">
+                <div class="flex items-center space-x-1">
+                    <span class="w-3 h-3 bg-slate-800 border border-slate-600 inline-block rounded"></span>
+                    <span><strong class="text-slate-200">`--`</strong> Düzlük</span>
+                </div>
+                <div class="flex items-center space-x-1">
+                    <span class="w-3 h-3 bg-slate-700 inline-block rounded"></span>
+                    <span><strong class="text-slate-200">`M`</strong> Dağ (+2 Savunma)</span>
+                </div>
+                <div class="flex items-center space-x-1">
+                    <span class="w-3 h-3 bg-blue-700 inline-block rounded"></span>
+                    <span><strong class="text-slate-200">`≈`</strong> Göl (Geçilmez)</span>
+                </div>
+                <div class="flex items-center space-x-1">
+                    <span class="w-3 h-3 bg-emerald-800 inline-block rounded"></span>
+                    <span><strong class="text-slate-200">`▲`</strong> Kaynak (+50 G)</span>
+                </div>
+                <div class="flex items-center space-x-1">
+                    <span class="w-3 h-3 bg-fuchsia-900 inline-block rounded"></span>
+                    <span><strong class="text-slate-200">`■`</strong> Kışla (+30 G / +3 Savunma)</span>
+                </div>
+            </div>
+        </main>
+
+        <!-- Right Sidebar: Info Panel & Combat Log -->
+        <aside class="w-full md:w-80 bg-slate-900/90 border-l border-slate-800 p-4 flex flex-col justify-between z-20 space-y-4">
+            
+            <!-- Selected Tile / Unit Inspector -->
+            <div class="bg-slate-800/60 p-3 rounded-lg border border-slate-700/60 space-y-2">
+                <h3 class="font-orbitron text-xs font-semibold uppercase tracking-wider text-slate-300 flex items-center justify-between">
+                    <span>Seçili Kare Bilgisi</span>
+                    <i class="fa-solid fa-magnifying-glass-location text-slate-400"></i>
+                </h3>
+                
+                <div id="inspectorContent" class="text-xs text-slate-400 py-2">
+                    Kare detaylarını ve birlik durumunu görmek için haritadan bir alana tıkla.
+                </div>
+            </div>
+
+            <!-- Action & Tactical Battle Log -->
+            <div class="bg-slate-800/40 p-3 rounded-lg border border-slate-700/50 flex-1 flex flex-col">
+                <h3 class="font-orbitron text-xs font-semibold uppercase tracking-wider text-slate-300 mb-2 flex items-center justify-between">
+                    <span>Savaş ve Komut Günlüğü</span>
+                    <i class="fa-solid fa-scroll text-slate-400"></i>
+                </h3>
+                <div id="combatLog" class="flex-1 bg-slate-950/80 p-2.5 rounded border border-slate-800 text-[11px] font-mono text-slate-300 space-y-1.5 overflow-y-auto max-h-[250px]">
+                    <div class="text-amber-400/80">> Savaş simülasyonu başlatıldı.</div>
+                    <div class="text-slate-400">> Şans unsuru devre dışı (Deterministic combat).</div>
+                </div>
+            </div>
+        </aside>
+    </div>
+
+    <!-- Victory Modal Popup -->
+    <div id="victoryModal" class="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center hidden">
+        <div class="bg-slate-900 border-2 border-amber-500 rounded-xl p-6 max-w-md w-full mx-4 text-center space-y-4 shadow-2xl">
+            <i class="fa-solid fa-trophy text-5xl text-amber-400 animate-bounce"></i>
+            <h2 id="victoryTitle" class="font-orbitron font-extrabold text-2xl text-slate-100">ZAFER!</h2>
+            <p id="victoryDesc" class="text-sm text-slate-300">Haritadaki hakimiyet sağlandı ve rakip ordu bertaraf edildi.</p>
+            <button onclick="location.reload()" class="w-full py-3 bg-amber-500 hover:bg-amber-400 text-slate-950 font-orbitron font-bold rounded-lg transition">
+                YENİ OYUN BAŞLAT
+            </button>
+        </div>
+    </div>
+
+    <!-- Game Logic Script -->
+    <script>
+        /**
+         * Web Audio API Sound Generator for UI & Game Actions
+         */
+        class SoundFX {
+            constructor() {
+                this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+            }
+
+            playBeep(freq = 440, type = 'sine', duration = 0.1) {
+                if (this.ctx.state === 'suspended') this.ctx.resume();
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = type;
+                osc.frequency.setValueAtTime(freq, this.ctx.currentTime);
+                gain.gain.setValueAtTime(0.1, this.ctx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + duration);
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start();
+                osc.stop(this.ctx.currentTime + duration);
+            }
+
+            click() { this.playBeep(600, 'triangle', 0.05); }
+            move() { this.playBeep(300, 'sine', 0.12); }
+            attack() { this.playBeep(180, 'sawtooth', 0.25); }
+            recruit() { this.playBeep(800, 'sine', 0.15); }
+            win() { this.playBeep(523.25, 'triangle', 0.4); }
+        }
+
+        const sfx = new SoundFX();
+
+        /**
+         * Game Constants & Unit Configuration
+         */
+        const UNIT_TYPES = {
+            infantry: { name: 'Piyade', cost: 20, power: 2, range: 1, maxMove: 1, icon: 'fa-shield' },
+            archer: { name: 'Okçu', cost: 30, power: 2, range: 2, maxMove: 1, icon: 'fa-crosshair' },
+            spearman: { name: 'Mızraklı', cost: 25, power: 3, range: 1, maxMove: 1, icon: 'fa-mace' },
+            cavalry: { name: 'Süvari', cost: 40, power: 4, range: 1, maxMove: 2, icon: 'fa-chess-knight' }
+        };
+
+        const TERRAIN_TYPES = {
+            plain: { symbol: '--', name: 'Düzlük', defBonus: 0, moveCost: 1, class: 'terrain-plain' },
+            mountain: { symbol: 'M', name: 'Dağlık Arazi', defBonus: 2, moveCost: 2, class: 'terrain-mountain' },
+            water: { symbol: '≈', name: 'Göl/Su', defBonus: 0, moveCost: 99, class: 'terrain-water' }, // Impassable
+            resource: { symbol: '▲', name: 'Doğal Kaynak', defBonus: 0, moveCost: 1, income: 50, class: 'terrain-resource' },
+            fortress: { symbol: '■', name: 'Kışla/Kale', defBonus: 3, moveCost: 1, income: 30, canRecruit: true, class: 'terrain-fortress' }
+        };
+
+        /**
+         * Main Game Engine Class
+         */
+        class WarlapseGame {
+            constructor() {
+                this.gridSize = 8;
+                this.board = [];
+                this.currentPlayer = 1; // 1: Red, 2: Blue
+                this.gameMode = 'ai'; // 'pvp' or 'ai'
+                this.selectedTile = null;
+                this.unitToRecruit = null;
+                this.turnCount = 1;
+
+                this.players = {
+                    1: { name: 'Oyuncu 1 (Kırmızı)', gold: 100, color: 'p1', capital: { r: 7, c: 0 } },
+                    2: { name: 'Oyuncu 2 (Mavi)', gold: 100, color: 'p2', capital: { r: 0, c: 7 } }
+                };
+
+                this.initMapLayout();
+                this.initDOM();
+                this.updateUI();
+                this.log('Taktik harp simülasyonu hazır. Oyuncu 1 sırası.', 'system');
+            }
+
+            // Fixed layout for high tactical depth based on user specifications
+            initMapLayout() {
+                const mapTemplate = [
+                    ['■', '--', '--', 'M',  '≈',  '▲',  '--', '■'], // Row 0 (P2 Capital at 0,7)
+                    ['--', 'M',  '--', '≈',  '≈',  '--', 'M',  '--'],
+                    ['--', '--', '▲',  '--', '--', '--', '--', '--'],
+                    ['M',  '≈',  '--', '■',  '--', '≈',  '▲',  'M'],
+                    ['M',  '▲',  '≈',  '--', '■',  '--', '≈',  'M'],
+                    ['--', '--', '--', '--', '--', '▲',  '--', '--'],
+                    ['--', 'M',  '--', '≈',  '≈',  '--', 'M',  '--'],
+                    ['■', '--', '▲',  '≈',  'M',  '--', '--', '■']  // Row 7 (P1 Capital at 7,0)
+                ];
+
+                this.board = [];
+                for (let r = 0; r < this.gridSize; r++) {
+                    this.board[r] = [];
+                    for (let c = 0; c < this.gridSize; c++) {
+                        const sym = mapTemplate[r][c];
+                        let tKey = 'plain';
+                        if (sym === 'M') tKey = 'mountain';
+                        if (sym === '≈') tKey = 'water';
+                        if (sym === '▲') tKey = 'resource';
+                        if (sym === '■') tKey = 'fortress';
+
+                        let owner = null;
+                        if (r === 7 && c === 0) owner = 1; // P1 Capital
+                        if (r === 0 && c === 7) owner = 2; // P2 Capital
+
+                        this.board[r][c] = {
+                            r, c,
+                            terrain: tKey,
+                            owner: owner, // Fortress/Resource tile ownership
+                            units: [] // Max 5 units
+                        };
+                    }
+                }
+
+                // Initial Starting Armies
+                this.board[7][0].units.push({ type: 'infantry', owner: 1, hp: 100 });
+                this.board[7][0].units.push({ type: 'archer', owner: 1, hp: 100 });
+
+                this.board[0][7].units.push({ type: 'infantry', owner: 2, hp: 100 });
+                this.board[0][7].units.push({ type: 'archer', owner: 2, hp: 100 });
+            }
+
+            initDOM() {
+                const boardElem = document.getElementById('board');
+                boardElem.innerHTML = '';
+
+                for (let r = 0; r < this.gridSize; r++) {
+                    for (let c = 0; c < this.gridSize; c++) {
+                        const tileElem = document.createElement('div');
+                        tileElem.id = `tile-${r}-${c}`;
+                        tileElem.className = 'tile flex flex-col items-center justify-between p-1 select-none';
+                        tileElem.onclick = () => this.handleTileClick(r, c);
+                        boardElem.appendChild(tileElem);
+                    }
+                }
+
+                document.getElementById('gameModeSelect').addEventListener('change', (e) => {
+                    this.gameMode = e.target.value;
+                    this.log(`Oyun modu değiştirildi: ${e.target.options[e.target.selectedIndex].text}`, 'system');
+                });
+            }
+
+            renderBoard() {
+                for (let r = 0; r < this.gridSize; r++) {
+                    for (let c = 0; c < this.gridSize; c++) {
+                        const tile = this.board[r][c];
+                        const tileElem = document.getElementById(`tile-${r}-${c}`);
+                        const tData = TERRAIN_TYPES[tile.terrain];
+
+                        // Reset base classes
+                        tileElem.className = `tile ${tData.class} flex flex-col items-center justify-between p-1`;
+
+                        // Selection & Range Highlights
+                        if (this.selectedTile && this.selectedTile.r === r && this.selectedTile.c === c) {
+                            tileElem.classList.add('tile-selected');
+                        }
+
+                        if (this.reachableTiles && this.reachableTiles.some(t => t.r === r && t.c === c)) {
+                            tileElem.classList.add('tile-reachable');
+                        }
+
+                        if (this.attackableTiles && this.attackableTiles.some(t => t.r === r && t.c === c)) {
+                            tileElem.classList.add('tile-attackable');
+                        }
+
+                        // Ownership Border Indicator for Fortresses/Resources
+                        if (tile.owner) {
+                            tileElem.style.border = `2px solid ${tile.owner === 1 ? '#ef4444' : '#3b82f6'}`;
+                        } else {
+                            tileElem.style.border = '';
+                        }
+
+                        // Content Layout inside Tile
+                        let contentHtml = `<div class="w-full flex justify-between items-center text-[10px] font-bold opacity-60">
+                            <span>${tData.symbol}</span>
+                            <span>${r},${c}</span>
+                        </div>`;
+
+                        // Unit Stack rendering
+                        if (tile.units.length > 0) {
+                            const topUnit = tile.units[tile.units.length - 1];
+                            const uSpec = UNIT_TYPES[topUnit.type];
+                            const unitColorClass = topUnit.owner === 1 ? 'text-red-500' : 'text-blue-400';
+                            const bgBadgeClass = topUnit.owner === 1 ? 'bg-red-950/80 border-red-600' : 'bg-blue-950/80 border-blue-600';
+
+                            contentHtml += `
+                                <div class="flex-1 flex flex-col items-center justify-center space-y-0.5">
+                                    <i class="fa-solid ${uSpec.icon} ${unitColorClass} text-lg md:text-xl drop-shadow"></i>
+                                    <div class="px-1.5 py-0.2 rounded border text-[9px] font-bold ${bgBadgeClass} text-slate-100 flex items-center space-x-1">
+                                        <span>${uSpec.name}</span>
+                                        ${tile.units.length > 1 ? `<span class="text-amber-400">x${tile.units.length}</span>` : ''}
+                                    </div>
+                                </div>
+                            `;
+                        } else {
+                            contentHtml += `<div class="flex-1"></div>`;
+                        }
+
+                        tileElem.innerHTML = contentHtml;
+                    }
+                }
+            }
+
+            handleTileClick(r, c) {
+                sfx.click();
+                const tile = this.board[r][c];
+
+                // If recruiting unit mode is active
+                if (this.unitToRecruit) {
+                    this.executeRecruit(r, c);
+                    return;
+                }
+
+                // If a tile with unit is already selected
+                if (this.selectedTile) {
+                    // Check if clicked tile is reachable (Move)
+                    if (this.reachableTiles && this.reachableTiles.some(t => t.r === r && t.c === c)) {
+                        this.moveUnits(this.selectedTile, tile);
+                        this.clearSelection();
+                        return;
+                    }
+
+                    // Check if clicked tile is attackable (Deterministic Combat)
+                    if (this.attackableTiles && this.attackableTiles.some(t => t.r === r && t.c === c)) {
+                        this.executeDeterministicCombat(this.selectedTile, tile);
+                        this.clearSelection();
+                        return;
+                    }
+                }
+
+                // Normal Tile Selection Logic
+                if (tile.units.length > 0 && tile.units[0].owner === this.currentPlayer) {
+                    this.selectedTile = tile;
+                    this.calculateValidMovesAndAttacks(tile);
+                } else {
+                    this.clearSelection();
+                }
+
+                this.inspectTile(tile);
+                this.renderBoard();
+            }
+
+            calculateValidMovesAndAttacks(tile) {
+                this.reachableTiles = [];
+                this.attackableTiles = [];
+
+                if (!tile.units.length) return;
+
+                const topUnit = tile.units[tile.units.length - 1];
+                const spec = UNIT_TYPES[topUnit.type];
+
+                // 4-Directional Grid Search
+                const dirs = [[-1,0], [1,0], [0,-1], [0,1]];
+
+                // Movement calculation
+                dirs.forEach(([dr, dc]) => {
+                    for (let step = 1; step <= spec.maxMove; step++) {
+                        const nr = tile.r + (dr * step);
+                        const nc = tile.c + (dc * step);
+
+                        if (this.isValidBounds(nr, nc)) {
+                            const targetTile = this.board[nr][nc];
+                            if (TERRAIN_TYPES[targetTile.terrain].moveCost > 50) break; // Water barrier
+
+                            if (targetTile.units.length === 0 || targetTile.units[0].owner === this.currentPlayer) {
+                                if (targetTile.units.length < 5) { // Stacking limit 5
+                                    this.reachableTiles.push(targetTile);
+                                }
+                            } else {
+                                break; // Blocked by opponent unit
+                            }
+                        }
+                    }
+                });
+
+                // Attack range calculation
+                dirs.forEach(([dr, dc]) => {
+                    for (let step = 1; step <= spec.range; step++) {
+                        const nr = tile.r + (dr * step);
+                        const nc = tile.c + (dc * step);
+
+                        if (this.isValidBounds(nr, nc)) {
+                            const targetTile = this.board[nr][nc];
+                            if (targetTile.units.length > 0 && targetTile.units[0].owner !== this.currentPlayer) {
+                                this.attackableTiles.push(targetTile);
+                            }
+                        }
+                    }
+                });
+            }
+
+            moveUnits(fromTile, toTile) {
+                sfx.move();
+                const movingUnits = [...fromTile.units];
+                fromTile.units = [];
+                toTile.units.push(...movingUnits);
+
+                // Capture territory if fortress or resource
+                if (toTile.terrain === 'fortress' || toTile.terrain === 'resource') {
+                    toTile.owner = this.currentPlayer;
+                    this.log(`[${toTile.r},${c}] ${TERRAIN_TYPES[toTile.terrain].name} ele geçirildi!`, 'capture');
+                }
+
+                this.log(`Birlikler [${fromTile.r},${fromTile.c}] karesinden [${toTile.r},${toTile.c}] karesine ilerledi.`, 'action');
+                this.checkWinCondition();
+            }
+
+            /**
+             * 100% Deterministic Combat Resolution (No Dice/RNG)
+             */
+            executeDeterministicCombat(attackerTile, defenderTile) {
+                sfx.attack();
+                const attOwner = attackerTile.units[0].owner;
+                const defOwner = defenderTile.units[0].owner;
+
+                // 1. Calculate Attacker Power
+                let attPower = 0;
+                attackerTile.units.forEach(u => {
+                    attPower += UNIT_TYPES[u.type].power;
+                });
+
+                // 2. Calculate Defender Power + Terrain Bonus
+                let defPower = 0;
+                defenderTile.units.forEach(u => {
+                    defPower += UNIT_TYPES[u.type].power;
+                });
+
+                const defTerrain = TERRAIN_TYPES[defenderTile.terrain];
+                defPower += defTerrain.defBonus; // Mountain (+2) or Fortress (+3)
+
+                // Tactical Counter Modifiers (Deterministic)
+                // Spearman vs Cavalry bonus
+                const hasSpearman = defenderTile.units.some(u => u.type === 'spearman');
+                const attHasCavalry = attackerTile.units.some(u => u.type === 'cavalry');
+                if (hasSpearman && attHasCavalry) {
+                    defPower += 3; // Counter advantage
+                }
+
+                this.log(`SAVAŞ: Saldıran Gücü: ${attPower} VS Savunan Gücü: ${defPower} (Arazi: +${defTerrain.defBonus})`, 'combat');
+
+                // Deterministic Combat Outcome
+                if (attPower > defPower) {
+                    // Attacker Wins
+                    defenderTile.units = []; // Eliminate defender
+                    defenderTile.owner = attOwner;
+                    
+                    // Move attackers into captured tile
+                    defenderTile.units = [...attackerTile.units];
+                    attackerTile.units = [];
+
+                    this.log(`ZAFER! Saldıran taraf [${defenderTile.r},${defenderTile.c}] karesini imha etti ve ele geçirdi.`, 'win');
+                } else {
+                    // Defender Holds or Mutual Losses
+                    attackerTile.units.pop(); // Attacker loses frontline unit
+                    this.log(`SAVUNMA BAŞARILI! Saldırı püskürtüldü. Saldıran 1 birlik kaybetti.`, 'loss');
+                }
+
+                this.checkWinCondition();
+            }
+
+            selectUnitToRecruit(unitKey) {
+                const uSpec = UNIT_TYPES[unitKey];
+                const player = this.players[this.currentPlayer];
+
+                if (player.gold < uSpec.cost) {
+                    this.log(`Yetersiz Altın! ${uSpec.name} maliyeti: ${uSpec.cost} G.`, 'warning');
+                    return;
+                }
+
+                this.unitToRecruit = unitKey;
+                this.log(`${uSpec.name} seçildi. Çağırmak için Başkent veya Kışla karesine tıkla.`, 'system');
+            }
+
+            executeRecruit(r, c) {
+                const tile = this.board[r][c];
+                const player = this.players[this.currentPlayer];
+                const uSpec = UNIT_TYPES[this.unitToRecruit];
+
+                // Check recruitment validity (Capital or Owned Fortress)
+                const isCapital = (this.currentPlayer === 1 && r === 7 && c === 0) || (this.currentPlayer === 2 && r === 0 && c === 7);
+                const isOwnedFortress = tile.terrain === 'fortress' && tile.owner === this.currentPlayer;
+
+                if (!isCapital && !isOwnedFortress) {
+                    this.log(`Birlik sadece Başkentinizde veya size ait bir Kışlada (\`■\`) basılabilir!`, 'warning');
+                    this.unitToRecruit = null;
+                    return;
+                }
+
+                if (tile.units.length >= 5) {
+                    this.log(`Bu karedeki maksimum 5 birlik kapasitesi doldu!`, 'warning');
+                    this.unitToRecruit = null;
+                    return;
+                }
+
+                // Deduct Gold & Add Unit
+                player.gold -= uSpec.cost;
+                tile.units.push({ type: this.unitToRecruit, owner: this.currentPlayer, hp: 100 });
+                sfx.recruit();
+
+                this.log(`[${r},${c}] karesinde yeni ${uSpec.name} konuşlandırıldı (-${uSpec.cost} G).`, 'action');
+                this.unitToRecruit = null;
+                this.updateUI();
+                this.renderBoard();
+            }
+
+            endTurn() {
+                this.clearSelection();
+
+                // Switch Player
+                this.currentPlayer = this.currentPlayer === 1 ? 2 : 1;
+                if (this.currentPlayer === 1) this.turnCount++;
+
+                // Income Calculation
+                const player = this.players[this.currentPlayer];
+                let income = 100; // Base income
+
+                for (let r = 0; r < this.gridSize; r++) {
+                    for (let c = 0; c < this.gridSize; c++) {
+                        const tile = this.board[r][c];
+                        if (tile.owner === this.currentPlayer) {
+                            if (tile.terrain === 'resource') income += 50;
+                            if (tile.terrain === 'fortress') income += 30;
+                        }
+                    }
+                }
+
+                player.gold += income;
+                this.log(`Tur ${this.turnCount} - ${player.name} turu başladı (+${income} G Gelir).`, 'turn');
+
+                this.updateUI();
+                this.renderBoard();
+
+                // Trigger AI Turn if enabled
+                if (this.gameMode === 'ai' && this.currentPlayer === 2) {
+                    setTimeout(() => this.executeAITurn(), 600);
+                }
+            }
+
+            /**
+             * AI Bot Logic for Solo Mode
+             */
+            executeAITurn() {
+                this.log(`Yapay Zeka (Mavi) hamlesini hesaplıyor...`, 'ai');
+
+                // 1. AI Recruitment: Try to buy Cavalry or Infantry if Gold allows
+                const aiPlayer = this.players[2];
+                if (aiPlayer.gold >= 40) {
+                    this.unitToRecruit = 'cavalry';
+                    this.executeRecruit(0, 7); // Capital
+                } else if (aiPlayer.gold >= 20) {
+                    this.unitToRecruit = 'infantry';
+                    this.executeRecruit(0, 7);
+                }
+
+                // 2. Find AI Units and Move/Attack
+                let aiTiles = [];
+                for (let r = 0; r < this.gridSize; r++) {
+                    for (let c = 0; c < this.gridSize; c++) {
+                        if (this.board[r][c].units.length > 0 && this.board[r][c].units[0].owner === 2) {
+                            aiTiles.push(this.board[r][c]);
+                        }
+                    }
+                }
+
+                // AI Moves toward Player 1 Capital (7,0)
+                aiTiles.forEach(tile => {
+                    this.calculateValidMovesAndAttacks(tile);
+
+                    // If attack is available, execute attack
+                    if (this.attackableTiles.length > 0) {
+                        this.executeDeterministicCombat(tile, this.attackableTiles[0]);
+                    } else if (this.reachableTiles.length > 0) {
+                        // Pick tile closest to P1 Capital (7,0)
+                        this.reachableTiles.sort((a, b) => {
+                            const distA = Math.abs(a.r - 7) + Math.abs(a.c - 0);
+                            const distB = Math.abs(b.r - 7) + Math.abs(b.c - 0);
+                            return distA - distB;
+                        });
+                        this.moveUnits(tile, this.reachableTiles[0]);
+                    }
+                });
+
+                this.renderBoard();
+                setTimeout(() => this.endTurn(), 500);
+            }
+
+            checkWinCondition() {
+                // Capital Capture Check
+                const p1Cap = this.board[7][0];
+                const p2Cap = this.board[0][7];
+
+                if (p1Cap.units.length > 0 && p1Cap.units[0].owner === 2) {
+                    this.triggerVictory(2, "Oyuncu 1 Başkenti Düştü!");
+                } else if (p2Cap.units.length > 0 && p2Cap.units[0].owner === 1) {
+                    this.triggerVictory(1, "Oyuncu 2 Başkenti Düştü!");
+                }
+            }
+
+            triggerVictory(winnerId, reason) {
+                sfx.win();
+                const modal = document.getElementById('victoryModal');
+                const title = document.getElementById('victoryTitle');
+                const desc = document.getElementById('victoryDesc');
+
+                title.innerText = `${this.players[winnerId].name.toUpperCase()} KAZANDI!`;
+                desc.innerText = reason;
+                modal.classList.remove('hidden');
+            }
+
+            clearSelection() {
+                this.selectedTile = null;
+                this.reachableTiles = [];
+                this.attackableTiles = [];
+                this.unitToRecruit = null;
+            }
+
+            inspectTile(tile) {
+                const elem = document.getElementById('inspectorContent');
+                const tData = TERRAIN_TYPES[tile.terrain];
+
+                let html = `
+                    <div class="space-y-1.5">
+                        <div class="font-bold text-slate-200 border-b border-slate-700 pb-1 flex justify-between">
+                            <span>${tData.name} (${tile.r},${tile.c})</span>
+                            <span class="text-amber-400">${tData.symbol}</span>
+                        </div>
+                        <div class="text-[11px] text-slate-300">
+                            <div>• Savunma Bonusu: <strong class="text-emerald-400">+${tData.defBonus}</strong></div>
+                            <div>• Hareket Maliyeti: <strong>${tData.moveCost}</strong></div>
+                            ${tData.income ? `<div>• Tur Geliri: <strong class="text-amber-400">+${tData.income} G</strong></div>` : ''}
+                            ${tile.owner ? `<div>• Kontrol: <strong class="${tile.owner === 1 ? 'text-red-400' : 'text-blue-400'}">Oyuncu ${tile.owner}</strong></div>` : ''}
+                        </div>
+                `;
+
+                if (tile.units.length > 0) {
+                    html += `<div class="mt-2 font-bold text-slate-200 text-[11px]">Karedeki Birlikler (${tile.units.length}/5):</div>`;
+                    tile.units.forEach((u, i) => {
+                        const spec = UNIT_TYPES[u.type];
+                        html += `
+                            <div class="p-1.5 bg-slate-800 rounded border border-slate-700/80 flex justify-between items-center text-[11px]">
+                                <span class="${u.owner === 1 ? 'text-red-400' : 'text-blue-400'} font-semibold">${i+1}. ${spec.name}</span>
+                                <span>Güç: ${spec.power} | Menzil: ${spec.range}</span>
+                            </div>
+                        `;
+                    });
+                }
+
+                html += `</div>`;
+                elem.innerHTML = html;
+            }
+
+            updateUI() {
+                const p = this.players[this.currentPlayer];
+                
+                // Turn Banner
+                const banner = document.getElementById('turnBanner');
+                const name = document.getElementById('turnPlayerName');
+                const badge = document.getElementById('turnBadge');
+
+                name.innerText = p.name;
+                if (this.currentPlayer === 1) {
+                    banner.className = "p-3 rounded-lg border flex items-center justify-between transition-all bg-red-950/40 border-red-500/50 text-red-400";
+                    badge.className = "w-4 h-4 rounded-full bg-red-500 animate-pulse";
+                } else {
+                    banner.className = "p-3 rounded-lg border flex items-center justify-between transition-all bg-blue-950/40 border-blue-500/50 text-blue-400";
+                    badge.className = "w-4 h-4 rounded-full bg-blue-500 animate-pulse";
+                }
+
+                // Stats
+                document.getElementById('playerGoldText').innerText = `${p.gold} G`;
+
+                // Calculate Income
+                let income = 100;
+                for (let r = 0; r < this.gridSize; r++) {
+                    for (let c = 0; c < this.gridSize; c++) {
+                        const tile = this.board[r][c];
+                        if (tile.owner === this.currentPlayer) {
+                            if (tile.terrain === 'resource') income += 50;
+                            if (tile.terrain === 'fortress') income += 30;
+                        }
+                    }
+                }
+                document.getElementById('playerIncomeText').innerText = `+${income} G`;
+            }
+
+            log(msg, type = 'action') {
+                const logElem = document.getElementById('combatLog');
+                const entry = document.createElement('div');
+
+                let color = 'text-slate-300';
+                if (type === 'combat') color = 'text-amber-400 font-bold';
+                if (type === 'win') color = 'text-emerald-400 font-bold';
+                if (type === 'warning') color = 'text-red-400';
+                if (type === 'turn') color = 'text-cyan-400 font-bold border-t border-slate-800 pt-1 mt-1';
+
+                entry.className = color;
+                entry.innerText = `> ${msg}`;
+                logElem.appendChild(entry);
+                logElem.scrollTop = logElem.scrollHeight;
+            }
+
+            isValidBounds(r, c) {
+                return r >= 0 && r < this.gridSize && c >= 0 && c < this.gridSize;
+            }
+        }
+
+        // Global Game Instance
+        let game = null;
+
+        window.onload = () => {
+            game = new WarlapseGame();
+            game.renderBoard();
+
+            document.getElementById('resetGameBtn').onclick = () => {
+                location.reload();
+            };
+        };
+    </script>
+</body>
+</html>
