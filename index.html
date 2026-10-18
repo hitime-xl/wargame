@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>SMOB Taktik Harp</title>
+<title>WarSeedGame</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 <style>
@@ -26,7 +26,7 @@ body{background:#090d16;color:#f1f5f9;user-select:none;font-family:system-ui,san
 <body class="h-screen flex flex-col overflow-hidden text-sm">
 
 <header class="bg-slate-900 border-b border-slate-800 px-4 py-2 flex justify-between items-center gap-2 flex-wrap">
-  <div class="flex items-center gap-2"><i class="fa-solid fa-shield-halved text-amber-500 text-xl"></i><b class="tracking-wide">SMOB TAKTİK HARP</b></div>
+  <div class="flex items-center gap-2"><i class="fa-solid fa-shield-halved text-amber-500 text-xl"></i><b class="tracking-wide">WarSeedGame</b></div>
   <div class="flex items-center gap-2">
     <span class="text-slate-400">Seed:</span><b id="seedLbl" class="text-amber-400 font-mono">-</b>
     <button id="menuBtn" class="btn2"><i class="fa-solid fa-bars mr-1"></i>Menü</button>
@@ -43,7 +43,7 @@ body{background:#090d16;color:#f1f5f9;user-select:none;font-family:system-ui,san
       <div class="bg-slate-800 p-2 rounded border border-slate-700"><div class="text-xs text-slate-400">Tur geliri</div><b id="inc" class="text-emerald-400 text-lg">0</b></div>
     </div>
     <div class="flex-1">
-      <div class="text-xs text-slate-400 mb-1">Birlik çağır, sonra Başkent ya da kendi Kışlana tıkla</div>
+      <div class="text-xs text-slate-400 mb-1">Birlik seç. Piyade ve uçak: Başkent ya da kendi Kışlan. Gemi: Kışlana en çok 3 kare uzaktaki göl karesi. Her türden en fazla 5 kez çağrılır.</div>
       <div id="recruit" class="space-y-2"></div>
     </div>
     <button id="endBtn" class="btn py-3">Turu bitir <i class="fa-solid fa-forward ml-1"></i></button>
@@ -52,7 +52,7 @@ body{background:#090d16;color:#f1f5f9;user-select:none;font-family:system-ui,san
   <main class="flex-1 p-3 flex flex-col items-center justify-center gap-3 min-h-0">
     <div class="w-full max-w-[600px]"><div id="board" class="board"></div></div>
     <div class="text-xs text-slate-400 flex flex-wrap gap-3 justify-center">
-      <span>-- Düzlük</span><span>M Dağ (+2 sav.)</span><span>≈ Göl (geçilmez)</span><span>▲ Kaynak (+50 G)</span><span>■ Kışla (+30 G, +3 sav.)</span>
+      <span>-- Düzlük</span><span>M Dağ (+2 sav., piyade çıkamaz)</span><span>≈ Göl (gemi/uçak)</span><span>▲ Kaynak (+50 G)</span><span>■ Kışla (+30 G, +3 sav.)</span>
     </div>
   </main>
 
@@ -68,7 +68,7 @@ body{background:#090d16;color:#f1f5f9;user-select:none;font-family:system-ui,san
 <!-- Menü -->
 <div id="menu" class="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-3 overflow-auto">
   <div class="bg-slate-900 border border-amber-500/60 rounded-xl p-5 w-full max-w-md space-y-4 my-auto">
-    <h2 class="text-xl font-bold">SMOB Taktik Harp</h2>
+    <h2 class="text-xl font-bold">WarSeedGame</h2>
     <div>
       <label class="text-xs text-slate-400">Harita seed'i (boş bırakırsan otomatik üretilir)</label>
       <div class="flex gap-2 mt-1"><input id="seedIn" class="inp font-mono" placeholder="örn. kartal42" maxlength="24"><button id="rndSeed" class="btn2" title="Rastgele seed"><i class="fa-solid fa-dice"></i></button></div>
@@ -116,11 +116,11 @@ const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'
 
 /* ---------- Veri ---------- */
 const UNITS={
-  infantry:{name:'Piyade',cost:20,power:2,range:1,move:1,icon:'fa-shield-halved'},
-  archer:{name:'Okçu',cost:30,power:2,range:2,move:1,icon:'fa-bullseye'},
-  spearman:{name:'Mızraklı',cost:25,power:3,range:1,move:1,icon:'fa-chess-rook'},
-  cavalry:{name:'Süvari',cost:40,power:4,range:1,move:2,icon:'fa-chess-knight'}
+  infantry:{name:'Piyade',cost:20,power:2,range:1,move:1,note:'Kara (dağ yok)',icon:'fa-person-rifle'},
+  ship:{name:'Gemi',cost:40,power:4,range:2,move:2,note:'Sadece su',icon:'fa-ship'},
+  plane:{name:'Uçak',cost:50,power:5,range:1,move:4,note:'Her yer',icon:'fa-plane'}
 };
+const can=(k,t)=>k==='plane'||(k==='ship'?t==='water':t!=='water'&&t!=='mountain');
 const TER={
   plain:{sym:'--',name:'Düzlük',def:0,cls:'t-plain'},
   mountain:{sym:'M',name:'Dağ',def:2,cls:'t-mountain'},
@@ -165,7 +165,7 @@ function genMap(seed){
         seen.add(j);q.push(j);
       }
     }
-    if(seen.has(7))return T;
+    if(seen.has(7)&&T.some((t,i)=>t==='water'&&(i>>3)+7-(i&7)<=3))return T;
   }
 }
 
@@ -177,13 +177,13 @@ class Game{
     this.seed=seed;this.mode=mode;this.me=me;
     this.names=['Oyuncu 1 (Kırmızı)','Oyuncu 2 (Mavi)'];
     if(mode==='solo')this.names=['Sen (Kırmızı)','Yapay Zeka (Mavi)'];
-    this.gold={1:100,2:100};this.cur=1;this.turn=1;this.winner=0;
+    this.gold={1:100,2:100};this.bought={1:{infantry:0,ship:0,plane:0},2:{infantry:0,ship:0,plane:0}};this.selType=null;this.cur=1;this.turn=1;this.winner=0;
     this.rec=null;this.sel=null;this.reach=[];this.att=[];this.lastJson='';
     const T=genMap(seed);
     this.board=T.map((t,i)=>({r:i>>3,c:i&7,terrain:t,owner:0,units:[]}));
     this.at(7,0).owner=1;this.at(0,7).owner=2;
-    this.at(7,0).units=[this.mk('infantry',1),this.mk('archer',1)];
-    this.at(0,7).units=[this.mk('infantry',2),this.mk('archer',2)];
+    this.at(7,0).units=[this.mk('infantry',1),this.mk('infantry',1)];
+    this.at(0,7).units=[this.mk('infantry',2),this.mk('infantry',2)];
     $('seedLbl').textContent=seed;
     $('log').innerHTML='';
     this.log(`Harita seed'i: ${seed}`,'text-amber-400');
@@ -194,10 +194,10 @@ class Game{
   canAct(){return !this.winner&&(this.mode==='solo'?this.cur===1:this.cur===this.me)}
   income(p){let n=100;this.board.forEach(t=>{if(t.owner===p&&TER[t.terrain].inc)n+=TER[t.terrain].inc});return n}
 
-  ser(){return JSON.stringify({c:this.cur,t:this.turn,g:[this.gold[1],this.gold[2]],w:this.winner,b:this.board.map(x=>[x.owner,x.units])})}
+  ser(){return JSON.stringify({c:this.cur,t:this.turn,g:[this.gold[1],this.gold[2]],k:[this.bought[1],this.bought[2]],w:this.winner,b:this.board.map(x=>[x.owner,x.units])})}
   load(s){
     const d=JSON.parse(s);
-    this.cur=d.c;this.turn=d.t;this.gold={1:d.g[0],2:d.g[1]};this.winner=d.w;
+    this.cur=d.c;this.turn=d.t;this.gold={1:d.g[0],2:d.g[1]};this.bought={1:d.k[0],2:d.k[1]};this.winner=d.w;
     d.b.forEach((x,i)=>{this.board[i].owner=x[0];this.board[i].units=x[1]||[]});
     this.lastJson=s;this.clear();this.refresh();
     if(this.winner)this.showWin();
@@ -218,7 +218,7 @@ class Game{
     $('turnName').textContent=this.names[this.cur-1]+(this.mode==='online'&&this.cur===this.me?' (Sen)':'');
     const p=this.mode==='solo'?1:this.me;
     $('gold').textContent=this.gold[p]+' G';$('inc').textContent='+'+this.income(p)+' G';
-    $('endBtn').disabled=!this.canAct();$('endBtn').style.opacity=this.canAct()?1:.4;
+    Object.keys(UNITS).forEach(k=>{const e=$('rem-'+k);if(e)e.textContent=(5-this.bought[p][k])+'/5'});$('endBtn').disabled=!this.canAct();$('endBtn').style.opacity=this.canAct()?1:.4;
     this.render();
   }
   render(){
@@ -230,8 +230,9 @@ class Game{
       d.style.border=t.owner&&T.inc?`2px solid ${t.owner===1?'#ef4444':'#3b82f6'}`:'';
       let h=`<div class="text-[10px] opacity-60 flex justify-between"><span>${T.sym}</span><span>${t.r},${t.c}</span></div>`;
       if(t.units.length){
-        const u=t.units[t.units.length-1],col=u.owner===1?'text-red-500':'text-blue-400';
-        h+=`<div class="flex-1 flex flex-col items-center justify-center ${t.units.every(x=>x.done)?'opacity-50':''}"><i class="fa-solid ${UNITS[u.type].icon} ${col} text-lg md:text-xl"></i><span class="text-[9px] font-bold">${UNITS[u.type].name}${t.units.length>1?' x'+t.units.length:''}</span></div>`;
+        const col=t.units[0].owner===1?'text-red-500':'text-blue-400',g={};
+        t.units.forEach(u=>g[u.type]=(g[u.type]||0)+1);
+        h+=`<div class="flex-1 flex flex-wrap items-center justify-center gap-x-1 ${t.units.every(x=>x.done)?'opacity-50':''}">${Object.entries(g).map(([k,n])=>`<span class="${col} font-bold text-xs md:text-sm"><i class="fa-solid ${UNITS[k].icon}"></i>${n>1?'×'+n:''}</span>`).join('')}</div>`;
       }else h+='<div class="flex-1"></div>';
       d.innerHTML=h;
     });
@@ -240,84 +241,81 @@ class Game{
     const T=TER[t.terrain];
     let h=`<div class="font-bold text-slate-200">${T.name} (${t.r},${t.c})</div><div>Savunma bonusu: +${T.def}${T.inc?' | Gelir: +'+T.inc+' G':''}${t.owner?' | Sahip: Oyuncu '+t.owner:''}</div>`;
     t.units.forEach((u,i)=>{const s=UNITS[u.type];h+=`<div class="${u.owner===1?'text-red-400':'text-blue-400'}">${i+1}. ${s.name} (Güç ${s.power}, Menzil ${s.range})${u.done?' - bekliyor':''}</div>`});
-    $('insp').innerHTML=h;
+    if(this.sel===t&&this.selType)h+=`<div class="text-amber-400 mt-1">Seçili tür: ${UNITS[this.selType].name} (tekrar tıkla: diğer tür)</div>`;$('insp').innerHTML=h;
   }
-  clear(){this.sel=null;this.reach=[];this.att=[]}
+  clear(){this.selType=null;this.sel=null;this.reach=[];this.att=[]}
 
   /* --- Etkileşim --- */
   click(t){
     this.inspect(t);
     if(this.rec){this.doRecruit(t);return}
-    if(this.sel){
-      if(this.reach.includes(t)){this.move(this.sel,t);this.clear();this.commit();return}
-      if(this.att.includes(t)){this.combat(this.sel,t);this.clear();this.commit();return}
+    if(this.sel&&this.sel!==t){
+      if(this.reach.includes(t)){this.move(this.sel,t,this.selType);this.clear();this.commit();return}
+      if(this.att.includes(t)){this.combat(this.sel,t,this.selType);this.clear();this.commit();return}
     }
-    this.clear();
-    if(this.canAct()&&t.units.some(u=>!u.done)&&t.units[0].owner===this.cur){this.sel=t;this.calc(t)}
-    this.render();
+    const types=[...new Set(t.units.filter(u=>!u.done).map(u=>u.type))];
+    if(!this.canAct()||!types.length||t.units[0].owner!==this.cur){this.clear();this.render();return}
+    const i=this.sel===t?types.indexOf(this.selType)+1:0;
+    this.sel=t;this.selType=types[i%types.length];
+    const r=this.calc(t,this.selType);this.reach=r.reach;this.att=r.att;
+    this.inspect(t);this.render();
   }
-  calc(t,sel=true){
-    const mv=t.units.filter(u=>!u.done);
-    const mm=Math.min(...mv.map(u=>UNITS[u.type].move)),rg=Math.max(...mv.map(u=>UNITS[u.type].range));
-    const reach=[],att=[];
-    for(const[dr,dc]of[[1,0],[-1,0],[0,1],[0,-1]]){
-      for(let s=1;s<=mm;s++){
-        const r=t.r+dr*s,c=t.c+dc*s;
-        if(r<0||r>7||c<0||c>7)break;
-        const x=this.at(r,c);
-        if(x.terrain==='water')break;
-        if(x.units.length&&x.units[0].owner!==this.cur)break;
-        if(x.units.length+mv.length<=5)reach.push(x);
-      }
-      for(let s=1;s<=rg;s++){
-        const r=t.r+dr*s,c=t.c+dc*s;
-        if(r<0||r>7||c<0||c>7)break;
-        const x=this.at(r,c);
-        if(x.units.length&&x.units[0].owner!==this.cur)att.push(x);
+  calc(t,type){
+    const n=t.units.filter(u=>!u.done&&u.type===type).length,s=UNITS[type],dist=new Map([[t,0]]),q=[t],reach=[];
+    while(q.length){
+      const x=q.shift(),d=dist.get(x);
+      if(d>=s.move)continue;
+      for(const[dr,dc]of[[1,0],[-1,0],[0,1],[0,-1]]){
+        const r=x.r+dr,c=x.c+dc;
+        if(r<0||r>7||c<0||c>7)continue;
+        const y=this.at(r,c),foe=y.units.length&&y.units[0].owner!==this.cur;
+        if(dist.has(y)||!can(type,y.terrain)||(foe&&type!=='plane'))continue;
+        dist.set(y,d+1);q.push(y);
+        if(!foe&&y.units.length+n<=5)reach.push(y);
       }
     }
-    if(sel){this.reach=reach;this.att=att}
+    const att=this.board.filter(x=>x.units.length&&x.units[0].owner!==this.cur&&Math.abs(x.r-t.r)+Math.abs(x.c-t.c)<=s.range);
     return{reach,att};
   }
   pick(type){
     if(!this.canAct())return;
     const s=UNITS[type];
     if(this.gold[this.cur]<s.cost){this.log(`Yetersiz altın! ${s.name}: ${s.cost} G`,'text-red-400');return}
+    if(this.bought[this.cur][type]>=5){this.log(`${s.name} limiti doldu (5/5)!`,'text-red-400');return}
     this.rec=type;this.clear();this.render();
-    this.log(`${s.name} seçildi. Başkent ya da kendi Kışlana tıkla.`);
+    this.log(`${s.name} seçildi. `+(type==='ship'?'Kışlana en çok 3 kare yakın bir göle tıkla.':'Başkent ya da kendi Kışlana tıkla.'));
   }
   doRecruit(t){
-    const type=this.rec;this.rec=null;
+    const type=this.rec,me=this.cur;this.rec=null;
     if(!this.canAct())return;
-    const ok=t.terrain==='fortress'&&t.owner===this.cur;
-    if(!ok){this.log('Birlik sadece başkentte veya sana ait Kışlada çağrılır!','text-red-400');return}
-    if(t.units.length&&t.units[0].owner!==this.cur){this.log('Karede düşman var!','text-red-400');return}
+    const ok=type==='ship'
+      ?t.terrain==='water'&&this.board.some(f=>f.terrain==='fortress'&&f.owner===me&&Math.abs(f.r-t.r)+Math.abs(f.c-t.c)<=3)
+      :t.terrain==='fortress'&&t.owner===me;
+    if(!ok){this.log(type==='ship'?'Gemi, Kışlana en çok 3 kare yakın bir göle konuşlanır!':'Bu birlik sadece başkentte veya sana ait Kışlada çağrılır!','text-red-400');return}
+    if(t.units.length&&t.units[0].owner!==me){this.log('Karede düşman var!','text-red-400');return}
     if(t.units.length>=5){this.log('Bu karede en fazla 5 birlik olabilir!','text-red-400');return}
-    this.gold[this.cur]-=UNITS[type].cost;
-    t.units.push(this.mk(type,this.cur));
+    this.gold[me]-=UNITS[type].cost;this.bought[me][type]++;
+    t.units.push(this.mk(type,me));
     this.log(`[${t.r},${t.c}] karesinde ${UNITS[type].name} çağrıldı (-${UNITS[type].cost} G).`);
     this.commit();
   }
-  move(a,b){
-    const mv=a.units.filter(u=>!u.done);
-    a.units=a.units.filter(u=>u.done);
-    mv.forEach(u=>u.done=true);
-    b.units.push(...mv);
+  move(a,b,type){
+    const mv=a.units.filter(u=>!u.done&&u.type===type);
+    a.units=a.units.filter(u=>!mv.includes(u));
+    mv.forEach(u=>u.done=true);b.units.push(...mv);
     if(TER[b.terrain].inc&&b.owner!==this.cur){b.owner=this.cur;this.log(`[${b.r},${b.c}] ${TER[b.terrain].name} ele geçirildi!`,'text-emerald-400')}
-    this.log(`Birlikler [${a.r},${a.c}] → [${b.r},${b.c}]`);
+    this.log(`${UNITS[type].name} [${a.r},${a.c}] → [${b.r},${b.c}]`);
   }
   // Tamamen deterministik savaş: zar yok.
-  combat(a,d){
-    const mv=a.units.filter(u=>!u.done);
-    let ap=mv.reduce((s,u)=>s+UNITS[u.type].power,0);
-    let dp=d.units.reduce((s,u)=>s+UNITS[u.type].power,0)+TER[d.terrain].def;
-    if(d.units.some(u=>u.type==='spearman')&&mv.some(u=>u.type==='cavalry'))dp+=3;
+  combat(a,d,type){
+    const mv=a.units.filter(u=>!u.done&&u.type===type);
+    const ap=mv.reduce((s,u)=>s+UNITS[u.type].power,0);
+    const dp=d.units.reduce((s,u)=>s+UNITS[u.type].power,0)+TER[d.terrain].def;
     this.log(`SAVAŞ: Saldıran ${ap} - Savunan ${dp} (arazi +${TER[d.terrain].def})`,'text-amber-400 font-bold');
     mv.forEach(u=>u.done=true);
     if(ap>dp){
-      const adj=Math.abs(a.r-d.r)+Math.abs(a.c-d.c)===1;
       d.units=[];
-      if(adj){
+      if(Math.abs(a.r-d.r)+Math.abs(a.c-d.c)===1&&can(type,d.terrain)){
         a.units=a.units.filter(u=>!mv.includes(u));d.units=mv;
         if(TER[d.terrain].inc)d.owner=this.cur;
       }
@@ -354,22 +352,26 @@ class Game{
   ai(){
     this.cur=2;
     const cap=this.at(...CAP[2]);
-    if(cap.units.length&&cap.units[0].owner===1)return;
-    for(const k of['cavalry','spearman','infantry']){
-      while(this.gold[2]>=UNITS[k].cost&&cap.units.length<5&&this.gold[2]>=40){this.gold[2]-=UNITS[k].cost;cap.units.push(this.mk(k,2))}
+    for(const k of['plane','infantry','ship','plane','infantry']){
+      const u=UNITS[k];
+      if(this.gold[2]<u.cost||this.bought[2][k]>=5)continue;
+      const spot=k==='ship'?this.board.find(w=>w.terrain==='water'&&!w.units.length&&w.r+7-w.c<=3):cap;
+      if(!spot||spot.units.length>=5||(spot.units.length&&spot.units[0].owner!==2))continue;
+      this.gold[2]-=u.cost;this.bought[2][k]++;spot.units.push(this.mk(k,2));
     }
-    while(this.gold[2]>=20&&cap.units.length<5){this.gold[2]-=20;cap.units.push(this.mk('infantry',2))}
-    const tiles=this.board.filter(t=>t.units.length&&t.units[0].owner===2);
-    const dist=t=>Math.abs(t.r-7)+Math.abs(t.c);
-    for(const t of tiles){
-      if(this.winner)break;
-      if(!t.units.some(u=>!u.done))continue;
-      const{reach,att}=this.calc(t,false);
-      const mv=t.units.filter(u=>!u.done),ap=mv.reduce((s,u)=>s+UNITS[u.type].power,0);
-      const target=att.find(x=>ap>x.units.reduce((s,u)=>s+UNITS[u.type].power,0)+TER[x.terrain].def+(x.units.some(u=>u.type==='spearman')&&mv.some(u=>u.type==='cavalry')?3:0));
-      if(target){this.combat(t,target);this.checkWin();continue}
-      const best=reach.filter(x=>!(x.units.length&&x.units[0].owner===2&&x.units.length>3)).sort((a,b)=>dist(a)-dist(b))[0];
-      if(best&&dist(best)<dist(t)){this.move(t,best);this.checkWin()}
+    const goal=this.at(...CAP[1]),dist=t=>Math.abs(t.r-goal.r)+Math.abs(t.c-goal.c);
+    for(const t of this.board.filter(x=>x.units.length&&x.units[0].owner===2)){
+      for(const type of new Set(t.units.map(u=>u.type))){
+        if(this.winner)break;
+        const mv=t.units.filter(u=>!u.done&&u.type===type);
+        if(!mv.length)continue;
+        const{reach,att}=this.calc(t,type);
+        const ap=mv.reduce((s,u)=>s+UNITS[u.type].power,0);
+        const tg=att.find(x=>ap>x.units.reduce((s,u)=>s+UNITS[u.type].power,0)+TER[x.terrain].def);
+        if(tg){this.combat(t,tg,type);this.checkWin();continue}
+        const best=reach.sort((a,b)=>dist(a)-dist(b))[0];
+        if(best&&dist(best)<dist(t)){this.move(t,best,type);this.checkWin()}
+      }
     }
     this.cur=2;
     if(this.winner){this.refresh();this.showWin();return}
@@ -396,7 +398,7 @@ $('soloBtn').onclick=()=>{
 Object.entries(UNITS).forEach(([k,u])=>{
   const d=document.createElement('div');
   d.className='p-2 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded flex justify-between items-center cursor-pointer';
-  d.innerHTML=`<span class="flex items-center gap-2"><i class="fa-solid ${u.icon} text-amber-400 w-5 text-center"></i><span><b class="text-xs">${u.name}</b><br><span class="text-[10px] text-slate-400">Güç ${u.power} | Menzil ${u.range} | Hareket ${u.move}</span></span></span><b class="text-amber-400 text-xs">${u.cost} G</b>`;
+  d.innerHTML=`<span class="flex items-center gap-2"><i class="fa-solid ${u.icon} text-amber-400 w-5 text-center"></i><span><b class="text-xs">${u.name}</b><br><span class="text-[10px] text-slate-400">Güç ${u.power} | Menzil ${u.range} | Hareket ${u.move} | ${u.note}</span></span></span><span class="text-right"><b class="text-amber-400 text-xs">${u.cost} G</b><br><span id="rem-${k}" class="text-[10px] text-slate-400">5/5</span></span>`;
   d.onclick=()=>G&&G.pick(k);
   $('recruit').appendChild(d);
 });
